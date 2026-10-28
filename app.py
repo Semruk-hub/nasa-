@@ -55,7 +55,6 @@ with tab_asteroit:
                 mesafe_ld = round(float(yak["miss_distance"]["lunar"]), 2)
                 tehlike = ast["is_potentially_hazardous_asteroid"]
                 
-                # Kritik alarm kontrolü: 1 Ay mesafesinden yakın VEYA (tehlikeli ve 100m'den büyük)
                 if mesafe_ld < 1.0 or (tehlike and ort_cap > 100):
                     kritik_cisimler.append((isim, ort_cap, mesafe_ld, hiz))
                 
@@ -78,7 +77,6 @@ with tab_asteroit:
                     "Tehlikeli mi?": "Evet ⚠️" if tehlike else "Hayır ✅"
                 })
             
-            # Alarm Çubuğu
             if kritik_cisimler:
                 st.error(f"🚨 KRİTİK YAKINLAŞMA ALARMI! Bugün Ay mesafesinden yakın veya 100m'den büyük {len(kritik_cisimler)} tehlikeli gök taşı tespit edildi!")
                 for c_isim, c_cap, c_ld, c_hiz in kritik_cisimler:
@@ -132,11 +130,10 @@ with tab_iss:
             c3.metric("Hız (km/sa)", hiz)
             c4.metric("Yerden Yükseklik (km)", yukseklik)
             
-            # Harita
             map_data = pd.DataFrame({'lat': [lat], 'lon': [lon]})
             st.map(map_data, zoom=2)
         else:
-            st.warning("ISS anlık koordinat servisine ulaşılamadı.")
+            st.warning("ISS servisine şu an ulaşılamıyor.")
     except Exception as e:
         st.error(f"Bağlantı hatası: {e}")
 
@@ -145,7 +142,7 @@ with tab_iss:
 # ---------------------------------------------------------
 with tab_epic:
     st.subheader("1.5 Milyon Km Öteden Tam Disk Dünya (DSCOVR/EPIC)")
-    with st.spinner("En güncel derin uzay Dünya fotoğrafları getiriliyor..."):
+    with st.spinner("EPIC fotoğrafları taranıyor..."):
         epic_url = f"https://api.nasa.gov/EPIC/api/natural?api_key={API_KEY}"
         epic_res = requests.get(epic_url)
         
@@ -158,20 +155,19 @@ with tab_epic:
             resim_adi = son_foto["image"]
             resim_url = f"https://api.nasa.gov/EPIC/archive/natural/{yil}/{ay}/{gun}/png/{resim_adi}.png?api_key={API_KEY}"
             
-            st.image(resim_url, caption=f"Çekim Tarihi: {son_foto['date']} (UTC)", use_column_width=True)
-            st.caption(f"Kamera: EPIC | Koordinat: {son_foto.get('centroid_coordinates', {})}")
+            st.image(resim_url, caption=f"Çekim Tarihi: {son_foto['date']} (UTC)", use_container_width=True)
         else:
-            st.info("Son 48 saate ait işlenmiş EPIC fotoğrafı bulunamadı.")
+            st.info("Güncel EPIC fotoğrafı bulunamadı.")
     else:
         st.error("EPIC servisine ulaşılamadı.")
 
 # ---------------------------------------------------------
-# 4. SEKME: DONKI UZAY HAVA DURUMU (GÜNEŞ PATLAMALARI)
+# 4. SEKME: DONKI UZAY HAVA DURUMU
 # ---------------------------------------------------------
 with tab_donki:
     st.subheader("Güneş Fırtınaları ve Koronal Kütle Atımları (CME)")
     bugun = date.today()
-    yedi_gun_once = bugun - timedelta(days=14)
+    yedi_gun_once = bugun - timedelta(days=7)
     
     with st.spinner("Güneş patlamaları taranıyor..."):
         donki_url = "https://api.nasa.gov/DONKI/CME"
@@ -184,16 +180,16 @@ with tab_donki:
         
     if donki_res.status_code == 200:
         patlamalar = donki_res.json()
-        if patlamalar:
-            st.warning(f"Son 14 günde Güneş'te toplam {len(patlamalar)} büyük patlama kaydedildi.")
-            for p in patlamalar[:5]:  # Son 5 patlama
+        if isinstance(patlamalar, list) and patlamalar:
+            st.warning(f"Son 7 günde Güneş'te toplam {len(patlamalar)} patlama kaydedildi.")
+            for p in patlamalar[:5]:
                 st.markdown(f"**⚡ Patlama Zamanı:** {p.get('startTime')}")
                 st.write(f"Not: {p.get('note', 'Açıklama girilmemiş.')}")
                 st.divider()
         else:
-            st.success("Son 14 günde kayda değer büyük bir Güneş patlaması tespit edilmedi.")
+            st.success("Son 7 günde Güneş'te kayda değer bir fırtına veya patlama bildirilmedi.")
     else:
-        st.error("DONKI veri servisine ulaşılamadı.")
+        st.error(f"DONKI servisi yanıt vermedi (Durum Kodu: {donki_res.status_code})")
 
 # ---------------------------------------------------------
 # 5. SEKME: APOD
@@ -209,7 +205,7 @@ with tab_apod:
         apod_data = res_apod.json()
         st.markdown(f"### {apod_data.get('title', 'Başlıksız')}")
         if apod_data.get("media_type") == "image":
-            st.image(apod_data.get("url"), caption=apod_data.get("title"), use_column_width=True)
+            st.image(apod_data.get("url"), caption=apod_data.get("title"), use_container_width=True)
         elif apod_data.get("media_type") == "video":
             st.video(apod_data.get("url"))
         with st.expander("Açıklama"):
@@ -220,18 +216,22 @@ with tab_apod:
 # ---------------------------------------------------------
 with tab_mars:
     st.subheader("Curiosity Keşif Aracı Fotoğrafları")
-    sol = st.slider("Mars Günü (Sol)", min_value=1, max_value=3000, value=1000)
+    # Popüler ve bol fotoğraflı bir sol (Mars günü) varsayılan yapıldı
+    sol = st.slider("Mars Günü (Sol) Seçin", min_value=1, max_value=3000, value=1000)
     
-    mars_url = "https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos"
-    mars_res = requests.get(mars_url, params={"sol": sol, "api_key": API_KEY})
+    with st.spinner(f"{sol}. Mars gününe ait fotoğraflar taranıyor..."):
+        mars_url = "https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos"
+        mars_res = requests.get(mars_url, params={"sol": sol, "api_key": API_KEY})
         
     if mars_res.status_code == 200:
         fotolar = mars_res.json().get("photos", [])
         if fotolar:
-            st.success(f"{sol}. güne ait {len(fotolar)} fotoğraf bulundu.")
+            st.success(f"{sol}. güne ait toplam {len(fotolar)} fotoğraf bulundu.")
             c1, c2, c3 = st.columns(3)
             for idx, foto in enumerate(fotolar[:6]):
                 col = [c1, c2, c3][idx % 3]
-                col.image(foto["img_src"], caption=foto["camera"]["full_name"], use_column_width=True)
+                col.image(foto["img_src"], caption=foto["camera"]["full_name"], use_container_width=True)
         else:
-            st.info("Bu Mars gününe ait fotoğraf bulunamadı.")
+            st.info(f"{sol}. Mars gününde kamera kaydı bulunamadı. Lütfen kaydırma çubuğunu 100, 500 veya 1000 gibi günlere getirin.")
+    else:
+        st.error(f"Mars API servisi hata verdi (Kod: {mars_res.status_code})")
