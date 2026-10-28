@@ -12,13 +12,13 @@ API_KEY = "8nkkMMdRqBgFJqPpRmRzhPgFCqPGKcHFdFr6TKFH"
 st.title("🚀 NASA Canlı Uzay & Gözlem Portalı")
 
 # Sekmeler
-tab_asteroit, tab_iss, tab_epic, tab_donki, tab_apod, tab_mars = st.tabs([
+tab_asteroit, tab_iss, tab_epic, tab_apod, tab_mars, tab_donki = st.tabs([
     "🛰️ Asteroit Radarı", 
     "🌍 ISS Canlı Harita", 
     "🔵 EPIC Dünya Görüntüsü",
-    "☀️ Uzay Hava Durumu (DONKI)",
     "🌌 Günün Fotoğrafı (APOD)", 
-    "🔴 Mars Rover"
+    "🔴 Mars Fotoğraf Arşivi",
+    "☀️ Uzay Hava Durumu (DONKI)"
 ])
 
 # ---------------------------------------------------------
@@ -80,7 +80,7 @@ with tab_asteroit:
             if kritik_cisimler:
                 st.error(f"🚨 KRİTİK YAKINLAŞMA ALARMI! Bugün Ay mesafesinden yakın veya 100m'den büyük {len(kritik_cisimler)} tehlikeli gök taşı tespit edildi!")
                 for c_isim, c_cap, c_ld, c_hiz in kritik_cisimler:
-                    st.warning(f"⚠️ **{c_isim}** | Çap: ~{c_cap}m | Mesafe: {c_ld} Lunar (Ay Mesafesi) | Hız: {c_hiz} km/sa")
+                    st.warning(f"⚠️ **{c_isim}** | Çap: ~{c_cap}m | Mesafe: {c_ld} Lunar | Hız: {c_hiz} km/sa")
             else:
                 st.success("✅ Seçilen tarihte kritik yakınlaşma alarmı yok.")
 
@@ -155,14 +155,65 @@ with tab_epic:
             resim_adi = son_foto["image"]
             resim_url = f"https://api.nasa.gov/EPIC/archive/natural/{yil}/{ay}/{gun}/png/{resim_adi}.png?api_key={API_KEY}"
             
-            st.image(resim_url, caption=f"Çekim Tarihi: {son_foto['date']} (UTC)", use_container_width=True)
+            st.image(resim_url, caption=f"Çekim Tarihi: {son_foto['date']} (UTC)", use_column_width=True)
         else:
             st.info("Güncel EPIC fotoğrafı bulunamadı.")
     else:
         st.error("EPIC servisine ulaşılamadı.")
 
 # ---------------------------------------------------------
-# 4. SEKME: DONKI UZAY HAVA DURUMU
+# 4. SEKME: APOD
+# ---------------------------------------------------------
+with tab_apod:
+    st.subheader("Astronomy Picture of the Day")
+    secilen_apod_tarihi = st.date_input("Tarih Seçin", value=date.today(), key="apod_tarih")
+    
+    apod_url = "https://api.nasa.gov/planetary/apod"
+    res_apod = requests.get(apod_url, params={"date": secilen_apod_tarihi.strftime("%Y-%m-%d"), "api_key": API_KEY})
+        
+    if res_apod.status_code == 200:
+        apod_data = res_apod.json()
+        st.markdown(f"### {apod_data.get('title', 'Başlıksız')}")
+        if apod_data.get("media_type") == "image":
+            st.image(apod_data.get("url"), caption=apod_data.get("title"), use_column_width=True)
+        elif apod_data.get("media_type") == "video":
+            st.video(apod_data.get("url"))
+        with st.expander("Açıklama"):
+            st.write(apod_data.get("explanation", ""))
+
+# ---------------------------------------------------------
+# 5. SEKME: MARS FOTOĞRAF ARŞİVİ (RESMİ NASA MEDYA API)
+# ---------------------------------------------------------
+with tab_mars:
+    st.subheader("Mars Keşif Görevleri Fotoğraf Arşivi")
+    arama_terimi = st.selectbox(
+        "Görüntülenecek Görev / Araç",
+        ["Curiosity Rover Mars", "Perseverance Rover Mars", "Ingenuity Mars Helicopter", "Mars Surface Panorama"]
+    )
+    
+    with st.spinner("NASA Mars arşivinden fotoğraflar alınıyor..."):
+        mars_url = f"https://images-api.nasa.gov/search?q={arama_terimi}&media_type=image"
+        mars_res = requests.get(mars_url)
+        
+    if mars_res.status_code == 200:
+        items = mars_res.json().get("collection", {}).get("items", [])
+        if items:
+            st.success(f"{arama_terimi} için NASA arşivinden yüksek çözünürlüklü fotoğraflar listelendi.")
+            c1, c2, c3 = st.columns(3)
+            for idx, item in enumerate(items[:6]):
+                data = item["data"][0]
+                links = item.get("links", [])
+                if links:
+                    img_url = links[0]["href"]
+                    col = [c1, c2, c3][idx % 3]
+                    col.image(img_url, caption=data.get("title", "Mars Görüntüsü"), use_column_width=True)
+        else:
+            st.info("Kayıtlı fotoğraf bulunamadı.")
+    else:
+        st.error("NASA Medya arşivine ulaşılamadı.")
+
+# ---------------------------------------------------------
+# 6. SEKME: DONKI UZAY HAVA DURUMU
 # ---------------------------------------------------------
 with tab_donki:
     st.subheader("Güneş Fırtınaları ve Koronal Kütle Atımları (CME)")
@@ -176,62 +227,21 @@ with tab_donki:
             "endDate": bugun.strftime("%Y-%m-%d"),
             "api_key": API_KEY
         }
-        donki_res = requests.get(donki_url, params=params_donki)
-        
-    if donki_res.status_code == 200:
-        patlamalar = donki_res.json()
-        if isinstance(patlamalar, list) and patlamalar:
-            st.warning(f"Son 7 günde Güneş'te toplam {len(patlamalar)} patlama kaydedildi.")
-            for p in patlamalar[:5]:
-                st.markdown(f"**⚡ Patlama Zamanı:** {p.get('startTime')}")
-                st.write(f"Not: {p.get('note', 'Açıklama girilmemiş.')}")
-                st.divider()
-        else:
-            st.success("Son 7 günde Güneş'te kayda değer bir fırtına veya patlama bildirilmedi.")
-    else:
-        st.error(f"DONKI servisi yanıt vermedi (Durum Kodu: {donki_res.status_code})")
-
-# ---------------------------------------------------------
-# 5. SEKME: APOD
-# ---------------------------------------------------------
-with tab_apod:
-    st.subheader("Astronomy Picture of the Day")
-    secilen_apod_tarihi = st.date_input("Tarih Seçin", value=date.today(), key="apod_tarih")
-    
-    apod_url = "https://api.nasa.gov/planetary/apod"
-    res_apod = requests.get(apod_url, params={"date": secilen_apod_tarihi.strftime("%Y-%m-%d"), "api_key": API_KEY})
-        
-    if res_apod.status_code == 200:
-        apod_data = res_apod.json()
-        st.markdown(f"### {apod_data.get('title', 'Başlıksız')}")
-        if apod_data.get("media_type") == "image":
-            st.image(apod_data.get("url"), caption=apod_data.get("title"), use_container_width=True)
-        elif apod_data.get("media_type") == "video":
-            st.video(apod_data.get("url"))
-        with st.expander("Açıklama"):
-            st.write(apod_data.get("explanation", ""))
-
-# ---------------------------------------------------------
-# 6. SEKME: MARS ROVER
-# ---------------------------------------------------------
-with tab_mars:
-    st.subheader("Curiosity Keşif Aracı Fotoğrafları")
-    # Popüler ve bol fotoğraflı bir sol (Mars günü) varsayılan yapıldı
-    sol = st.slider("Mars Günü (Sol) Seçin", min_value=1, max_value=3000, value=1000)
-    
-    with st.spinner(f"{sol}. Mars gününe ait fotoğraflar taranıyor..."):
-        mars_url = "https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/photos"
-        mars_res = requests.get(mars_url, params={"sol": sol, "api_key": API_KEY})
-        
-    if mars_res.status_code == 200:
-        fotolar = mars_res.json().get("photos", [])
-        if fotolar:
-            st.success(f"{sol}. güne ait toplam {len(fotolar)} fotoğraf bulundu.")
-            c1, c2, c3 = st.columns(3)
-            for idx, foto in enumerate(fotolar[:6]):
-                col = [c1, c2, c3][idx % 3]
-                col.image(foto["img_src"], caption=foto["camera"]["full_name"], use_container_width=True)
-        else:
-            st.info(f"{sol}. Mars gününde kamera kaydı bulunamadı. Lütfen kaydırma çubuğunu 100, 500 veya 1000 gibi günlere getirin.")
-    else:
-        st.error(f"Mars API servisi hata verdi (Kod: {mars_res.status_code})")
+        try:
+            donki_res = requests.get(donki_url, params=params_donki, timeout=8)
+            if donki_res.status_code == 200:
+                patlamalar = donki_res.json()
+                if isinstance(patlamalar, list) and patlamalar:
+                    st.warning(f"Son 7 günde Güneş'te toplam {len(patlamalar)} patlama kaydedildi.")
+                    for p in patlamalar[:5]:
+                        st.markdown(f"**⚡ Patlama Zamanı:** {p.get('startTime')}")
+                        st.write(f"Not: {p.get('note', 'Açıklama girilmemiş.')}")
+                        st.divider()
+                else:
+                    st.success("Son 7 günde Güneş'te kayda değer büyük bir patlama bildirilmedi.")
+            elif donki_res.status_code == 503:
+                st.warning("⚠️ NASA DONKI sunucuları şu anda bakım modunda (503 Service Unavailable). Servis açıldığında otomatik güncellenecektir.")
+            else:
+                st.error(f"DONKI servisi yanıt vermedi (Kod: {donki_res.status_code})")
+        except Exception:
+            st.warning("⚠️ NASA Uzay Hava Durumu servisine ulaşılamıyor (Zaman aşımı).")
